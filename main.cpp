@@ -556,7 +556,9 @@ void display() {
 
     glutSwapBuffers();
 }
+ 
 
+// comment
 void idleFunc() {
     skyRotation += 0.01f; // Rotație cinematică foarte lentă
     if (skyRotation > 360.0f) skyRotation -= 360.0f;
