@@ -10,11 +10,17 @@
 // --- ID-uri Texturi ---
 GLuint texGround, texSky, texLouvre, texAsphalt, texBuilding, texTree;
 
-// --- Variabile Cameră ---
+// --- Variabile Cameră și Animație ---
 float camX = 0.0f, camY = 3.0f, camZ = 50.0f;
 float camYaw = 0.0f, camPitch = 0.0f;
 float skyRotation = 0.0f;
-bool isShadowPass = false; // Ne spune dacă acum desenăm umbre sau obiecte reale
+float carAngle = 0.0f;
+
+// --- Variabile NOI pentru Soare Dinamic ---
+float sunAngle = 0.0f;
+float sunPos[4] = { 0.0f, 60.0f, 0.0f, 1.0f }; // Soarele e o lumină punctuală pe cer
+
+bool isShadowPass = false;
 
 // ==========================================
 // --- FUNCȚII UTILE ---
@@ -38,7 +44,6 @@ GLuint loadTexture(const char* path) {
         int totalPixels = width * height;
         for (int i = 0; i < totalPixels * 4; i += 4) {
             unsigned char r = data[i], g = data[i + 1], b = data[i + 2];
-            // Eliminăm albul pentru transparență
             if (r > 240 && g > 240 && b > 240) data[i + 3] = 0;
             else data[i + 3] = 255;
         }
@@ -75,7 +80,6 @@ void buildShadowMatrix(float shadowMat[16], float lightPos[4], float plane[4]) {
 // --- GEOMETRIE DESENARE ---
 // ==========================================
 
-// Desenează un cub simplu (pentru bănci, felinare etc)
 void drawBlock(float w, float h, float d) {
     glBegin(GL_QUADS);
     glNormal3f(0.0f, 0.0f, 1.0f); glVertex3f(-w, 0.0f, d); glVertex3f(w, 0.0f, d); glVertex3f(w, h, d); glVertex3f(-w, h, d);
@@ -86,15 +90,17 @@ void drawBlock(float w, float h, float d) {
     glEnd();
 }
 
-// Desenează clădirea cu tot cu acoperiș și textură
 void drawBuilding(float w, float h, float d, GLuint texture) {
     if (!isShadowPass) {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, texture);
         glColor3f(1.0f, 1.0f, 1.0f);
     }
+    else {
+        glDisable(GL_TEXTURE_2D);
+        glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ
+    }
 
-    // Corp clădire
     glBegin(GL_QUADS);
     glNormal3f(0.0f, 0.0f, 1.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(-w, 0.0f, d); glTexCoord2f(1.0f, 0.0f); glVertex3f(w, 0.0f, d); glTexCoord2f(1.0f, 1.0f); glVertex3f(w, h, d); glTexCoord2f(0.0f, 1.0f); glVertex3f(-w, h, d);
     glNormal3f(0.0f, 0.0f, -1.0f); glTexCoord2f(1.0f, 0.0f); glVertex3f(w, 0.0f, -d); glTexCoord2f(0.0f, 0.0f); glVertex3f(-w, 0.0f, -d); glTexCoord2f(0.0f, 1.0f); glVertex3f(-w, h, -d); glTexCoord2f(1.0f, 1.0f); glVertex3f(w, h, -d);
@@ -102,7 +108,6 @@ void drawBuilding(float w, float h, float d, GLuint texture) {
     glNormal3f(1.0f, 0.0f, 0.0f); glTexCoord2f(0.0f, 0.0f); glVertex3f(w, 0.0f, d); glTexCoord2f(1.0f, 0.0f); glVertex3f(w, 0.0f, -d); glTexCoord2f(1.0f, 1.0f); glVertex3f(w, h, -d); glTexCoord2f(0.0f, 1.0f); glVertex3f(w, h, d);
     glEnd();
 
-    // Acoperiș
     if (!isShadowPass) { glDisable(GL_TEXTURE_2D); glColor3f(0.3f, 0.35f, 0.4f); }
     glBegin(GL_QUADS);
     glNormal3f(0.0f, 1.0f, 0.0f); glVertex3f(-w, h, d); glVertex3f(w, h, d); glVertex3f(w, h, -d); glVertex3f(-w, h, -d);
@@ -128,14 +133,13 @@ void drawCrossedQuadTree(float height, float width) {
     glDisable(GL_LIGHTING);
     glEnable(GL_ALPHA_TEST);
 
-    // Corectăm opacitatea pentru a permite umbrei să se deseneze
     if (isShadowPass) {
-        glColor4f(0.05f, 0.05f, 0.05f, 0.5f);
-        glAlphaFunc(GL_GREATER, 0.1f); // Lăsăm umbra semi-transparentă să treacă
+        glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ
+        glAlphaFunc(GL_GREATER, 0.5f);
     }
     else {
         glColor3f(1.0f, 1.0f, 1.0f);
-        glAlphaFunc(GL_GREATER, 0.8f); // Tăiem strict marginea albă
+        glAlphaFunc(GL_GREATER, 0.8f);
     }
 
     glBegin(GL_QUADS);
@@ -153,6 +157,7 @@ void drawCrossedQuadTree(float height, float width) {
 void drawStreetLamp(float height) {
     glDisable(GL_TEXTURE_2D);
     if (!isShadowPass) glColor3f(0.1f, 0.1f, 0.1f);
+    else glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ
 
     glPushMatrix(); drawBlock(0.3f, 1.0f, 0.3f); glPopMatrix();
     glPushMatrix(); glTranslatef(0.0f, 1.0f, 0.0f); drawBlock(0.1f, height - 2.0f, 0.1f); glPopMatrix();
@@ -164,6 +169,9 @@ void drawStreetLamp(float height) {
         glPushMatrix(); glTranslatef(0.0f, height - 0.7f, 0.0f); drawBlock(0.2f, 0.5f, 0.2f); glPopMatrix();
         glEnable(GL_LIGHTING);
         glColor3f(0.1f, 0.1f, 0.1f);
+    }
+    else {
+        glPushMatrix(); glTranslatef(0.0f, height - 0.7f, 0.0f); drawBlock(0.2f, 0.5f, 0.2f); glPopMatrix();
     }
 
     glPushMatrix();
@@ -183,6 +191,7 @@ void drawBench() {
     float bw = 2.5f, bh = 0.6f, bd = 0.6f, bwh = 0.9f;
 
     if (!isShadowPass) glColor3f(0.05f, 0.05f, 0.05f);
+    else glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ
 
     glPushMatrix(); glTranslatef(-bw + 0.2f, 0.0f, 0.0f); drawBlock(0.1f, 0.8f, bd); glPopMatrix();
     glPushMatrix(); glTranslatef(bw - 0.2f, 0.0f, 0.0f); drawBlock(0.1f, 0.8f, bd); glPopMatrix();
@@ -190,6 +199,44 @@ void drawBench() {
     if (!isShadowPass) glColor3f(0.4f, 0.25f, 0.1f);
     glPushMatrix(); glTranslatef(0.0f, bh, 0.0f); drawBlock(bw, 0.1f, bd); glPopMatrix();
     glPushMatrix(); glTranslatef(0.0f, bh + bwh, -bd); glRotatef(15.0f, 1.0f, 0.0f, 0.0f); drawBlock(bw, 0.3f, 0.05f); glPopMatrix();
+}
+
+void drawCar() {
+    glDisable(GL_TEXTURE_2D);
+
+    if (isShadowPass) {
+        glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ MAȘINĂ
+        glPushMatrix(); glTranslatef(0.0f, 0.4f, 0.0f); drawBlock(1.5f, 0.6f, 0.8f); glPopMatrix();
+        glPushMatrix(); glTranslatef(0.0f, 1.0f, 0.0f); drawBlock(0.8f, 0.5f, 0.7f); glPopMatrix();
+
+        float wR = 0.4f, wW = 0.2f;
+        glPushMatrix(); glTranslatef(1.0f, 0.4f, 0.8f); glutSolidCylinder(wR, wW, 20, 1); glPopMatrix();
+        glPushMatrix(); glTranslatef(1.0f, 0.4f, -1.0f); glutSolidCylinder(wR, wW, 20, 1); glPopMatrix();
+        glPushMatrix(); glTranslatef(-1.0f, 0.4f, 0.8f); glutSolidCylinder(wR, wW, 20, 1); glPopMatrix();
+        glPushMatrix(); glTranslatef(-1.0f, 0.4f, -1.0f); glutSolidCylinder(wR, wW, 20, 1); glPopMatrix();
+        return;
+    }
+
+    glColor3f(0.8f, 0.1f, 0.1f);
+    glPushMatrix(); glTranslatef(0.0f, 0.4f, 0.0f); drawBlock(1.5f, 0.6f, 0.8f); glPopMatrix();
+
+    glColor3f(0.2f, 0.2f, 0.2f);
+    glPushMatrix(); glTranslatef(0.0f, 1.0f, 0.0f); drawBlock(0.8f, 0.5f, 0.7f); glPopMatrix();
+
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 1.0f, 0.8f);
+    glPushMatrix(); glTranslatef(1.5f, 0.7f, 0.5f); drawBlock(0.05f, 0.2f, 0.2f); glPopMatrix();
+    glPushMatrix(); glTranslatef(1.5f, 0.7f, -0.5f); drawBlock(0.05f, 0.2f, 0.2f); glPopMatrix();
+    glEnable(GL_LIGHTING);
+
+    glColor3f(0.05f, 0.05f, 0.05f);
+    float wheelRadius = 0.4f, wheelWidth = 0.2f;
+    glPushMatrix(); glTranslatef(1.0f, 0.4f, 0.8f); glutSolidCylinder(wheelRadius, wheelWidth, 20, 1); glPopMatrix();
+    glPushMatrix(); glTranslatef(1.0f, 0.4f, -1.0f); glutSolidCylinder(wheelRadius, wheelWidth, 20, 1); glPopMatrix();
+    glPushMatrix(); glTranslatef(-1.0f, 0.4f, 0.8f); glutSolidCylinder(wheelRadius, wheelWidth, 20, 1); glPopMatrix();
+    glPushMatrix(); glTranslatef(-1.0f, 0.4f, -1.0f); glutSolidCylinder(wheelRadius, wheelWidth, 20, 1); glPopMatrix();
+
+    glColor3f(1.0f, 1.0f, 1.0f);
 }
 
 // ==========================================
@@ -200,13 +247,14 @@ void drawEnvironment() {
     glEnable(GL_LIGHTING);
     glColor3f(1.0f, 1.0f, 1.0f);
 
-    // --- SOARELE (Globul galben fizic) ---
+    // --- SOARELE DINAMIC ---
     glPushMatrix();
     glDisable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
-    glColor3f(1.0f, 0.9f, 0.6f); // Galben-Soare
-    glTranslatef(30.0f, 50.0f, 30.0f); // Poziția lui în cer
-    glutSolidSphere(3.0, 30, 30);
+    glColor3f(1.0f, 0.9f, 0.0f);
+    glTranslatef(sunPos[0], sunPos[1], sunPos[2]);
+    glutSolidSphere(5.0, 30, 30);
+    glColor3f(1.0f, 1.0f, 1.0f);
     glEnable(GL_TEXTURE_2D);
     glEnable(GL_LIGHTING);
     glPopMatrix();
@@ -236,12 +284,12 @@ void drawEnvironment() {
     glEnd();
 
     // Skybox
-    glDisable(GL_LIGHTING); glDisable(GL_FOG);
+    glDisable(GL_LIGHTING);
     glBindTexture(GL_TEXTURE_2D, texSky);
     glPushMatrix();
     glRotatef(skyRotation, 0.0f, 1.0f, 0.0f);
     glBegin(GL_QUADS);
-    float d = 150.0f;
+    float d = 200.0f;
     glTexCoord2f(0.0f, 0.0f); glVertex3f(-d, -20.0f, -d); glTexCoord2f(1.0f, 0.0f); glVertex3f(d, -20.0f, -d); glTexCoord2f(1.0f, 1.0f); glVertex3f(d, d, -d); glTexCoord2f(0.0f, 1.0f); glVertex3f(-d, d, -d);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(d, -20.0f, d); glTexCoord2f(1.0f, 0.0f); glVertex3f(-d, -20.0f, d); glTexCoord2f(1.0f, 1.0f); glVertex3f(-d, d, d); glTexCoord2f(0.0f, 1.0f); glVertex3f(d, d, d);
     glTexCoord2f(0.0f, 0.0f); glVertex3f(-d, -20.0f, d); glTexCoord2f(1.0f, 0.0f); glVertex3f(-d, -20.0f, -d); glTexCoord2f(1.0f, 1.0f); glVertex3f(-d, d, -d); glTexCoord2f(0.0f, 1.0f); glVertex3f(-d, d, d);
@@ -249,11 +297,10 @@ void drawEnvironment() {
     glTexCoord2f(0.0f, 0.0f); glVertex3f(-d, d, -d); glTexCoord2f(1.0f, 0.0f); glVertex3f(d, d, -d); glTexCoord2f(1.0f, 1.0f); glVertex3f(d, d, d); glTexCoord2f(0.0f, 1.0f); glVertex3f(-d, d, d);
     glEnd();
     glPopMatrix();
-    glEnable(GL_LIGHTING); glEnable(GL_FOG);
+    glEnable(GL_LIGHTING);
 }
 
 void drawObjects() {
-    // Piramida Luvru
     if (!isShadowPass) {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, texLouvre);
@@ -261,6 +308,7 @@ void drawObjects() {
     }
     else {
         glDisable(GL_TEXTURE_2D);
+        glColor4f(0.0f, 0.0f, 0.0f, 1.0f); // UMBRĂ COMPLET NEAGRĂ
     }
 
     glPushMatrix();
@@ -274,7 +322,6 @@ void drawObjects() {
     glEnd();
     glPopMatrix();
 
-    // Clădiri și Copaci (Puse pe sol la y = -1.0f)
     for (int i = 0; i < 12; i++) {
         float u = 2.0f * 3.14159f * float(i) / 12.0f;
         glPushMatrix();
@@ -284,7 +331,6 @@ void drawObjects() {
         glPopMatrix();
     }
 
-    // Felinare și Bănci (De asemenea puse pe sol la y = -1.0f)
     glDisable(GL_TEXTURE_2D);
     for (int i = 0; i < 20; i++) {
         float u = 2.0f * 3.14159f * float(i) / 20.0f;
@@ -296,6 +342,16 @@ void drawObjects() {
         else if (i % 4 == 1) drawBench();
         glPopMatrix();
     }
+
+    glPushMatrix();
+    float rCar = 35.0f;
+    float radCar = carAngle * 3.14159f / 180.0f;
+    glTranslatef(rCar * cos(radCar), -1.0f, rCar * sin(radCar));
+    glRotatef(-carAngle - 90.0f, 0.0f, 1.0f, 0.0f);
+    drawCar();
+    glPopMatrix();
+
+    glEnable(GL_TEXTURE_2D);
 }
 
 // ==========================================
@@ -305,7 +361,6 @@ void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
 
-    // Calcul cameră free-look
     float radYaw = camYaw * 3.14159f / 180.0f;
     float radPitch = camPitch * 3.14159f / 180.0f;
     float lookX = camX + sin(radYaw) * cos(radPitch);
@@ -314,9 +369,7 @@ void display() {
 
     gluLookAt(camX, camY, camZ, lookX, lookY, lookZ, 0.0, 1.0, 0.0);
 
-    // Setăm poziția luminii DUPĂ ce am mișcat camera, pentru a fi fixă în lume
-    GLfloat light_position[] = { 30.0f, 50.0f, 30.0f, 0.0f };
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+    glLightfv(GL_LIGHT0, GL_POSITION, sunPos);
 
     GLfloat mat_specular[] = { 0.2f, 0.2f, 0.2f, 1.0f };
     GLfloat mat_shininess[] = { 8.0f };
@@ -332,28 +385,28 @@ void display() {
     isShadowPass = true;
 
     glDisable(GL_LIGHTING);
-    glDisable(GL_TEXTURE_2D);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // DEZACTIVĂM BLEND CA SĂ FIE 100% NEGRU OBTURANT
+    glDisable(GL_BLEND);
 
-    // Setăm culoarea umbrei (cu forța, peste tot)
-    glColor4f(0.05f, 0.05f, 0.05f, 0.5f);
+    glDepthMask(GL_FALSE);
 
-    // Planul podelei: 1.0f la final înseamnă matematic y = -1.0f
+    // MODIFICARE CRITICĂ: Planul matematic mutat la Y = -1.0f 
+    // ca să prindă perfect și mașina care e pe asfalt
     float groundPlane[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
     float shadowMatrix[16];
 
-    // Umbra de la Soare
-    buildShadowMatrix(shadowMatrix, light_position, groundPlane);
+    // Umbra dinamică de la Soare 
+    buildShadowMatrix(shadowMatrix, sunPos, groundPlane);
     glPushMatrix();
-    glTranslatef(0.0f, 0.02f, 0.0f); // Ridicăm umbra extrem de puțin ca să nu se bată cu asfaltul
+    // Ridicăm vizual umbra cu 0.02 ca să nu dea glitch-uri pe asfalt
+    glTranslatef(0.0f, 0.02f, 0.0f);
     glMultMatrixf(shadowMatrix);
     drawObjects();
     glPopMatrix();
 
     // Umbre Locale (Felinare)
-    float lamp1Pos[] = { 28.0f, 4.0f, 0.0f, 1.0f };
-    float lamp2Pos[] = { -28.0f, 4.0f, 0.0f, 1.0f };
+    float lamp1Pos[] = { 28.0f, 25.0f, 0.0f, 1.0f };
+    float lamp2Pos[] = { -28.0f, 25.0f, 0.0f, 1.0f };
 
     buildShadowMatrix(shadowMatrix, lamp1Pos, groundPlane);
     glPushMatrix(); glTranslatef(0.0f, 0.02f, 0.0f); glMultMatrixf(shadowMatrix); drawObjects(); glPopMatrix();
@@ -361,10 +414,10 @@ void display() {
     buildShadowMatrix(shadowMatrix, lamp2Pos, groundPlane);
     glPushMatrix(); glTranslatef(0.0f, 0.02f, 0.0f); glMultMatrixf(shadowMatrix); drawObjects(); glPopMatrix();
 
-    // Resetăm totul
+    // Resetăm totul la final
+    glDepthMask(GL_TRUE);
     isShadowPass = false;
     glEnable(GL_LIGHTING);
-    glDisable(GL_BLEND);
 
     glutSwapBuffers();
 }
@@ -373,27 +426,22 @@ void display() {
 // --- INITIALIZARE & CONTROL ---
 // ==========================================
 void init() {
-    glClearColor(0.5f, 0.7f, 0.9f, 1.0f);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_TEXTURE_2D);
 
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
-    GLfloat light_ambient[] = { 0.3f, 0.3f, 0.3f, 1.0f };
-    GLfloat light_diffuse[] = { 0.8f, 0.8f, 0.75f, 1.0f };
+    GLfloat light_ambient[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+    GLfloat light_diffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     GLfloat light_specular[] = { 0.4f, 0.4f, 0.4f, 1.0f };
     glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
     glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
     glEnable(GL_LIGHT0);
 
-    glEnable(GL_FOG);
-    glFogi(GL_FOG_MODE, GL_EXP2);
-    GLfloat fogColor[4] = { 0.7f, 0.8f, 0.9f, 1.0f };
-    glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_DENSITY, 0.002f);
-    glHint(GL_FOG_HINT, GL_NICEST);
+    glDisable(GL_FOG);
 
     texGround = loadTexture("pavaj.jpg");
     texSky = loadTexture("cer_paris.jpg");
@@ -403,10 +451,23 @@ void init() {
     texTree = loadTexture("pom.jpg");
 }
 
-void idleFunc() {
-    skyRotation += 0.005f;
+void timerFunc(int value) {
+    skyRotation += 0.05f;
     if (skyRotation > 360.0f) skyRotation -= 360.0f;
+
+    carAngle -= 0.5f;
+    if (carAngle < 0.0f) carAngle += 360.0f;
+
+    sunAngle += 0.005f;
+    if (sunAngle > 2 * 3.14159f) sunAngle -= 2 * 3.14159f;
+
+    float rSun = 100.0f;
+    sunPos[0] = rSun * cos(sunAngle);
+    sunPos[1] = 60.0f;
+    sunPos[2] = rSun * sin(sunAngle);
+
     glutPostRedisplay();
+    glutTimerFunc(16, timerFunc, 0);
 }
 
 void reshape(int w, int h) {
@@ -447,7 +508,7 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(1280, 720);
-    glutCreateWindow("Circuitul Luvru - P3 Finalizat");
+    glutCreateWindow("Circuitul Luvru - Proiect Final Complet");
 
     init();
 
@@ -455,7 +516,8 @@ int main(int argc, char** argv) {
     glutReshapeFunc(reshape);
     glutSpecialFunc(specialKeys);
     glutKeyboardFunc(keyboard);
-    glutIdleFunc(idleFunc);
+
+    glutTimerFunc(0, timerFunc, 0);
 
     glutMainLoop();
     return 0;
